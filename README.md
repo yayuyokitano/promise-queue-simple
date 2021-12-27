@@ -1,4 +1,4 @@
-# simple-promise-queue
+# promise-queue-simple
 Simple and flexible promise queue
 
 This is currently an unstable and undocumented module, made dirtily and quickly and uploaded primarily for personal use.

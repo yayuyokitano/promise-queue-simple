@@ -1,5 +1,5 @@
 {
-  "name": "simple-promise-queue",
+  "name": "promise-queue-simple",
   "version": "0.0.1",
   "description": "Simple and flexible promise queue",
   "main": "dist/index.js",
