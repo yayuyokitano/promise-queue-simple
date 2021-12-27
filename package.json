@@ -1,0 +1,12 @@
+{
+  "name": "simple-promise-queue",
+  "version": "0.0.1",
+  "description": "Simple and flexible promise queue",
+  "main": "dist/index.js",
+  "repository": "https://github.com/yayuyokitano/simple-promise-queue.git",
+  "author": "yayuyokitano <69117606+yayuyokitano@users.noreply.github.com>",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^17.0.5"
+  }
+}
