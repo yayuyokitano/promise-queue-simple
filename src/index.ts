@@ -149,8 +149,8 @@ export class Queue<T> extends EventEmitter{
         
       case OnRejection.RETRY_THEN_THROW: {
         const shouldRetry = this.retryCondition?.(err);
-        if (shouldRetry?.retry) {
-          await this.attemptRetry(shouldRetry.interval, retryCount, err, inputInfo);
+        if (shouldRetry?.retry ?? true) {
+          await this.attemptRetry(shouldRetry?.interval, retryCount, err, inputInfo);
         } else {
           this.emit("fail", err);
           this.end();
