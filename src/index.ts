@@ -73,7 +73,11 @@ export class Queue<T> extends EventEmitter{
 
   private runningCount = 0;
   private queue = new Array<() => Promise<T>>();
-  private resultObject:{[key:string]: T} = {};
+  private resolveObject:{[key:string]: {
+    res: T;
+    inputInfo: InputInfo<T>;
+  }} = {};
+  private rejectObject:{[key:string]: unknown} = {};
   private index = 0;
   private completed = 0;
   private isRunning = false;
@@ -91,33 +95,48 @@ export class Queue<T> extends EventEmitter{
     this.retryCondition = options?.retryCondition ?? null;
   }
 
+  private async continue(inputInfo:InputInfo<T>) {
+    this.runningCount--;
+    await sleep(Math.max(0, inputInfo.startTime + this.interval - Date.now()));
+    if (this.started) {
+      this.dequeue();
+    }
+  }
+
   private async attemptEmit(res:T, inputInfo:InputInfo<T>) {
     if (this.guaranteeOrder) {
-      this.resultObject[inputInfo.index] = res;
+      this.resolveObject[inputInfo.index] = {
+        res,
+        inputInfo
+      };
+      console.log(this.resolveObject);
+      console.log(this.rejectObject);
 
-      if (inputInfo.index === this.completed) {
-
-        this.emit("resolve", res);
-        this.completed++;
-        if (this.resultObject.hasOwnProperty(this.completed)) {
-          this.attemptEmit(this.resultObject[this.completed], {
-            index: this.completed,
-            fn: inputInfo.fn,
-            startTime: inputInfo.startTime
-          });
-          return;
+      while (this.resolveObject.hasOwnProperty(this.completed.toString()) || this.rejectObject.hasOwnProperty(this.completed.toString())) {
+        console.log(this.completed);
+        if (this.resolveObject.hasOwnProperty(this.completed.toString())) {
+          this.emit("resolve", this.resolveObject[this.completed].res);
+          delete this.resolveObject[this.completed];
+        } else if (this.rejectObject.hasOwnProperty(this.completed.toString())) {
+          this.emit("reject", this.rejectObject[this.completed], inputInfo);
+          delete this.rejectObject[this.completed];
         }
+        this.completed++;
 
       }
 
     } else {
       this.emit("resolve", res);
     }
+    this.continue(inputInfo);
+    
+  }
+
+  private rejectAndContinue(err:unknown, inputInfo:InputInfo<T>) {
+    this.emit("reject", err, inputInfo);
+    this.rejectObject[inputInfo.index.toString()] = err;
     this.runningCount--;
-    await sleep(Math.max(0, inputInfo.startTime + this.interval - Date.now()));
-    if (this.started) {
-      this.dequeue();
-    }
+    this.dequeue();
   }
 
   private async attemptRetry(interval:number|undefined, retryCount:number, err:unknown, inputInfo:InputInfo<T>) {
@@ -134,8 +153,12 @@ export class Queue<T> extends EventEmitter{
       }
 
     } else {
-      this.emit("fail", err);
-      this.end();
+      if (this.onRejection === OnRejection.RETRY_THEN_THROW) {
+        this.emit("fail", err);
+        this.end();
+      } else {
+        this.rejectAndContinue(err, inputInfo);
+      }
     }
   }
 
@@ -159,18 +182,16 @@ export class Queue<T> extends EventEmitter{
       }
       
       case OnRejection.IGNORE: {
-        this.emit("reject", err, inputInfo);
-        this.runningCount--;
-        this.dequeue();
+        this.rejectAndContinue(err, inputInfo);
         break;
       }
       
       case OnRejection.RETRY_THEN_IGNORE: {
         const shouldRetry = this.retryCondition?.(err);
-        if (shouldRetry?.retry) {
-          await this.attemptRetry(shouldRetry.interval, retryCount, err, inputInfo);
+        if (shouldRetry?.retry ?? true) {
+          await this.attemptRetry(shouldRetry?.interval, retryCount, err, inputInfo);
         } else {
-          this.emit("reject", err, inputInfo);
+          this.rejectAndContinue(err, inputInfo);
         }
         break;
       }
@@ -199,6 +220,7 @@ export class Queue<T> extends EventEmitter{
     } else {
       this.end();
       this.emit("finish");
+      this.emit("end");
     }
   }
 
@@ -213,12 +235,12 @@ export class Queue<T> extends EventEmitter{
 
   private end() {
     this.isRunning = false;
-    this.emit("end");
   }
 
   public stop() {
     this.startOnAdd = false;
     this.emit("stop");
+    this.emit("end");
     this.end();
   }
 
@@ -235,6 +257,12 @@ export class Queue<T> extends EventEmitter{
   
   public clear() {
     this.queue = [];
+    this.resolveObject = {};
+    this.rejectObject = {};
+    this.index = 0;
+    this.completed = 0;
+    this.isRunning = false;
+    this.runningCount = 0;
   }
 
   public get size(){
@@ -254,6 +282,6 @@ export class Queue<T> extends EventEmitter{
   }
 
   public get stopped() {
-    return this.startOnAdd && !this.started;
+    return !this.startOnAdd && !this.started;
   }
 };
