@@ -46,7 +46,7 @@ interface QueueEvents<T> {
   "enqueue": (inputInfo:QueueItem<T>) => void;
 }
 
-declare interface Queue<T> {
+export interface Queue<T> extends EventEmitter {
   on<U extends keyof QueueEvents<T>>(
     event: U, listener: QueueEvents<T>[U]
   ): this;
@@ -58,7 +58,7 @@ declare interface Queue<T> {
 
 const sleep = async(ms:number) => new Promise(resolve => setTimeout(resolve, ms));
 
-class Queue<T> extends EventEmitter {
+export class Queue<T> extends EventEmitter{
   private interval:number;
   private concurrent:number;
   private startOnAdd:boolean;
@@ -256,6 +256,4 @@ class Queue<T> extends EventEmitter {
   public get stopped() {
     return this.startOnAdd && !this.started;
   }
-}
-
-export default Queue;
+};

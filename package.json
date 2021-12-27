@@ -1,6 +1,6 @@
 {
   "name": "promise-queue-simple",
-  "version": "0.0.2",
+  "version": "0.0.4",
   "description": "Simple and flexible promise queue",
   "main": "dist/index.js",
   "repository": "https://github.com/yayuyokitano/simple-promise-queue.git",
