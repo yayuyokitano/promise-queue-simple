@@ -103,22 +103,25 @@ export class Queue<T> extends EventEmitter{
     }
   }
 
+  private fail(err:unknown) {
+    if (this.started) {
+      this.emit("fail", err);
+      this.end();
+    }
+  }
+
   private async attemptEmit(res:T, inputInfo:InputInfo<T>) {
     if (this.guaranteeOrder) {
       this.resolveObject[inputInfo.index] = {
         res,
         inputInfo
       };
-      console.log(this.resolveObject);
-      console.log(this.rejectObject);
 
       while (this.resolveObject.hasOwnProperty(this.completed.toString()) || this.rejectObject.hasOwnProperty(this.completed.toString())) {
-        console.log(this.completed);
         if (this.resolveObject.hasOwnProperty(this.completed.toString())) {
           this.emit("resolve", this.resolveObject[this.completed].res);
           delete this.resolveObject[this.completed];
         } else if (this.rejectObject.hasOwnProperty(this.completed.toString())) {
-          this.emit("reject", this.rejectObject[this.completed], inputInfo);
           delete this.rejectObject[this.completed];
         }
         this.completed++;
@@ -154,8 +157,7 @@ export class Queue<T> extends EventEmitter{
 
     } else {
       if (this.onRejection === OnRejection.RETRY_THEN_THROW) {
-        this.emit("fail", err);
-        this.end();
+        this.fail(err);
       } else {
         this.rejectAndContinue(err, inputInfo);
       }
@@ -165,8 +167,7 @@ export class Queue<T> extends EventEmitter{
   private async handleRejection(err:unknown, inputInfo:InputInfo<T>, retryCount:number) {
     switch (this.onRejection) {
       case OnRejection.THROW: {
-        this.emit("fail", err);
-        this.end();
+        this.fail(err);
         break;
       }
         
@@ -175,8 +176,7 @@ export class Queue<T> extends EventEmitter{
         if (shouldRetry?.retry ?? true) {
           await this.attemptRetry(shouldRetry?.interval, retryCount, err, inputInfo);
         } else {
-          this.emit("fail", err);
-          this.end();
+          this.fail(err);
         }
         break;
       }
@@ -220,7 +220,6 @@ export class Queue<T> extends EventEmitter{
     } else {
       this.end();
       this.emit("finish");
-      this.emit("end");
     }
   }
 
@@ -234,13 +233,15 @@ export class Queue<T> extends EventEmitter{
   }
 
   private end() {
-    this.isRunning = false;
+    if (this.started) {
+      this.isRunning = false;
+      this.emit("end");
+    }
   }
 
   public stop() {
     this.startOnAdd = false;
     this.emit("stop");
-    this.emit("end");
     this.end();
   }
 

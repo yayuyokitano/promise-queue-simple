@@ -14,7 +14,7 @@ interface QueueItem<T> {
   fn: () => Promise<T>;
 }
 
-const sleep = async (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const sleep = async (ms: number, res:string = "") => new Promise(resolve => setTimeout(() => {resolve(res)}, ms));
 const unresolvablePromise = () => new Promise(() => {});
 const rejectPromise = () => new Promise((_, reject) => reject());
 let resolveObject:{[key:string]:boolean} = {};
@@ -208,9 +208,13 @@ describe("General tests, retryandthrow", () => {
     expect(res).to.deep.equal(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]);
   });
 
-  it("Should emit 5 retried resolves in the correct order with fails between", async () => {
+  it("Should only emit the first retried resolve and emit fail and end once for alternating rejecting and resolving promisese", async () => {
     queue.clear();
     queue.removeAllListeners();
+    const failSpy = chai.spy();
+    const endSpy = chai.spy();
+    queue.on("fail", failSpy);
+    queue.on("end", endSpy);
     let res:string[] = [];
     queue.on("resolve", (data) => {
       res.push(data);
@@ -218,14 +222,17 @@ describe("General tests, retryandthrow", () => {
     resolveObject = {};
     for (let i = 0; i < 10; i++) {
       if (i % 2 === 0) {
-        queue.enqueue(() => rejectOnce(i.toString(), (10 - i) * 5));
+        queue.enqueue(() => rejectOnce(i.toString(), (10 - i) * 3));
       } else {
         queue.enqueue(rejectPromise);
       }
     }
-    await sleep(1000);
-    expect(res).to.deep.equal(["0", "2", "4", "6", "8"]);
+    await sleep(300);
+    expect(failSpy).to.have.been.called.once;
+    expect(endSpy).to.have.been.called.once;
+    expect(res).to.deep.equal(["0"]);
   });
+
 });
 
 describe("Queue with ignore errors", () => {
@@ -258,6 +265,62 @@ describe("Queue with ignore errors", () => {
     queue.start();
     await sleep(10);
     expect(queue.isEmpty).to.equal(true);
+  });
+
+  it("Should reject ten times and return nothing on alternating promises that reject once and always", async () => {
+    queue.clear();
+    queue.removeAllListeners();
+    const failSpy = chai.spy();
+    const endSpy = chai.spy();
+    const rejectSpy = chai.spy();
+    queue.on("fail", failSpy);
+    queue.on("end", endSpy);
+    queue.on("reject", rejectSpy);
+    let res:string[] = [];
+    queue.on("resolve", (data) => {
+      res.push(data);
+    });
+    resolveObject = {};
+    for (let i = 0; i < 10; i++) {
+      if (i % 2 === 0) {
+        queue.enqueue(() => rejectOnce(i.toString(), (10 - i) * 3));
+      } else {
+        queue.enqueue(rejectPromise);
+      }
+    }
+    await sleep(300);
+    expect(failSpy).to.not.have.been.called;
+    expect(endSpy).to.have.been.called.once;
+    expect(rejectSpy).to.have.been.called.exactly(10);
+    expect(res).to.deep.equal([]);
+  });
+
+  it("Should reject five times and return the resolving promises when fed alternating resolving and reject once promises", async () => {
+    queue.clear();
+    queue.removeAllListeners();
+    const failSpy = chai.spy();
+    const endSpy = chai.spy();
+    const rejectSpy = chai.spy();
+    queue.on("fail", failSpy);
+    queue.on("end", endSpy);
+    queue.on("reject", rejectSpy);
+    let res:string[] = [];
+    queue.on("resolve", (data) => {
+      res.push(data);
+    });
+    resolveObject = {};
+    for (let i = 0; i < 10; i++) {
+      if (i % 2 === 0) {
+        queue.enqueue(() => sleep((10 - i) * 3, i.toString()));
+      } else {
+        queue.enqueue(() => rejectOnce(i.toString(), (10 - i) * 3));
+      }
+    }
+    await sleep(300);
+    expect(failSpy).to.not.have.been.called;
+    expect(endSpy).to.have.been.called.once;
+    expect(rejectSpy).to.have.been.called.exactly(5);
+    expect(res).to.deep.equal(["0", "2", "4", "6", "8"]);
   });
 
 });
@@ -327,6 +390,7 @@ describe("Queue with retryCondition on retry then ignore", () => {
     await sleep(10);
     expect(queue.isEmpty).to.equal(true);
   });
+
 });
 
 describe("Queue without retryCondition on retry then ignore", () => {
@@ -363,4 +427,37 @@ describe("Queue without retryCondition on retry then ignore", () => {
     expect(resolveSpy).to.have.been.called.once;
     expect(queue.isEmpty).to.equal(true);
   });
+
+  it("Should emit 5 retried resolves in the correct order with fails between, and emit reject 5 times, and emit end/finish once, and not emit fail", async () => {
+    queue.clear();
+    queue.removeAllListeners();
+    const failSpy = chai.spy();
+    const endSpy = chai.spy();
+    const rejectSpy = chai.spy();
+    const finishSpy = chai.spy();
+    queue.on("fail", failSpy);
+    queue.on("end", endSpy);
+    queue.on("reject", rejectSpy);
+    queue.on("finish", finishSpy);
+
+    let res:string[] = [];
+    queue.on("resolve", (data) => {
+      res.push(data);
+    });
+    resolveObject = {};
+    for (let i = 0; i < 10; i++) {
+      if (i % 2 === 0) {
+        queue.enqueue(() => rejectOnce(i.toString(), (10 - i) * 3));
+      } else {
+        queue.enqueue(rejectPromise);
+      }
+    }
+    await sleep(300);
+    expect(failSpy).to.not.have.been.called;
+    expect(endSpy).to.have.been.called.once;
+    expect(finishSpy).to.have.been.called.once;
+    expect(rejectSpy).to.have.been.called.exactly(5);
+    expect(res).to.deep.equal(["0", "2", "4", "6", "8"]);
+  });
+
 });
